@@ -86,9 +86,6 @@ System_Boundary(video_streaming_system, Кинобездна) {
         }
 
 
-
-
-
         Container_Boundary(views_tracking_service_boundary, Views Tracking Service, $tags=views_tracking_boundary_tag) {
             Container(views_tracking_service, Сервис отслеживания просмотров, "FastAPI", "", python)
             ContainerDb(views_track_redis, In-Memory DB для хранения последнего тайминга просмотра фильма, "Redis", "", redis)
