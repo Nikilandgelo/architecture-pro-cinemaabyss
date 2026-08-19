@@ -1,0 +1,195 @@
+@startuml
+!ROUNDED_STYLE=1
+!include <C4/C4_Container>
+!include <logos/nginx>
+!include <logos/react>
+!include <logos/auth0>
+!include <logos/nodejs>
+!include <logos/kong>
+!include <logos/python>
+!include <logos/aws-s3>
+!include <logos/postgresql>
+!include <logos/redis>
+!include <logos/kafka>
+!include <logos/rabbitmq>
+
+LAYOUT_TOP_DOWN()
+
+
+AddRelTag(catalog_rel, $textColor=darkviolet, $lineColor=darkviolet, $lineStyle=BoldLine())
+AddBoundaryTag(catalog_boundary_tag, $fontColor=darkviolet, $borderColor=darkviolet, $borderStyle=BoldLine())
+
+AddRelTag(video_streaming_rel, $textColor=steelblue, $lineColor=steelblue, $lineStyle=BoldLine())
+AddBoundaryTag(video_streaming_boundary_tag, $fontColor=steelblue, $borderColor=steelblue, $borderStyle=BoldLine())
+
+AddRelTag(views_tracking_rel, $textColor=midnightblue, $lineColor=midnightblue, $lineStyle=BoldLine())
+AddBoundaryTag(views_tracking_boundary_tag, $fontColor=midnightblue, $borderColor=midnightblue, $borderStyle=BoldLine())
+
+AddRelTag(payments_service_rel, $textColor=darkorange, $lineColor=darkorange, $lineStyle=BoldLine())
+AddBoundaryTag(payments_service_boundary_tag, $fontColor=darkorange, $borderColor=darkorange, $borderStyle=BoldLine())
+
+AddRelTag(subscriptions_service_rel, $textColor=firebrick, $lineColor=firebrick, $lineStyle=BoldLine())
+AddBoundaryTag(subscriptions_service_boundary_tag, $fontColor=firebrick, $borderColor=firebrick, $borderStyle=BoldLine())
+
+AddRelTag(promotions_service_rel, $textColor=green, $lineColor=green, $lineStyle=BoldLine())
+AddBoundaryTag(promotions_service_boundary_tag, $fontColor=green, $borderColor=green, $borderStyle=BoldLine())
+
+AddRelTag(recommendations_service_rel, $textColor=mediumturquoise, $lineColor=mediumturquoise, $lineStyle=BoldLine())
+AddBoundaryTag(recommendations_service_boundary_tag, $fontColor=mediumturquoise, $borderColor=mediumturquoise, $borderStyle=BoldLine())
+
+AddRelTag(profiles_service_rel, $textColor=lightcoral, $lineColor=lightcoral, $lineStyle=BoldLine())
+AddBoundaryTag(profiles_service_boundary_tag, $fontColor=lightcoral, $borderColor=lightcoral, $borderStyle=BoldLine())
+
+
+Person(user, Client)
+Person(administrator, Administrator)
+
+
+System_Ext(recommendation_system, Внешняя рекомендательная система)
+System_Ext(payment_system, Платежная система)
+System_Ext(online_cinemas, Сторонние онлайн-кинотеатры)
+
+
+System_Boundary(video_streaming_system, Кинобездна) {
+    Container(web_server, Web Server, Nginx, Returns static assets, nginx)
+
+    Container_Boundary(user_front, Client Frontend Applications) {
+        Container(web_front, Web Application, React, Web Application, react)
+        Container(mobile_front, Mobile Application, React, Mobile Application, react)
+        Container(tv_front, TV Application, React, TV Application, react)
+    }
+    Container_Boundary(crm_front, CRM for administrators) {
+        Container(web_crm, Web Application, React, Web Application, react)
+        Container(mobile_crm, Mobile Application, React, Mobile Application, react)
+    }
+
+    Container(api_gateway, API Gateway, Kong, "", kong)
+    Container(auth_service, Identity & Access Management, Authentik, "Аутентификация, выдача JWT с ролями и правами пользователей", auth0)
+
+    Container_Boundary(bff_layer, BFF Layer) {
+        Container(web_bff, Web BFF, Node.JS, "", nodejs)
+        Container(mobile_bff, Mobile BFF, Node.JS, "", nodejs)
+        Container(tv_bff, TV BFF, Node.JS, "", nodejs)
+    }
+
+
+    Container_Boundary(backend_microservices, Backend Micro Services) {
+
+        Container_Boundary(video_streaming_service_boundary, Video Streaming Service, $tags=video_streaming_boundary_tag) {
+            Container(video_streaming_service, Сервис видеостриминга, "FastAPI", "Получение списка доступных провайдеров и ссылки на файл с фильмом, исходя из доступных параметров просмотра разрешаемых подпиской", python)
+            Container(s3, S3, "AWS S3", "", aws-s3)
+        }
+
+        Container_Boundary(catalog_service_boundary, Catalog Service, $tags=catalog_boundary_tag) {
+            Container(catalog_service, Сервис каталога контента, "FastAPI", "Создание администраторами в CRM информации о фильмах, существующих жанрах, актерах. Просмотр информации о фильмах, жанрах, актерах клиентами, проставление собственной оценки фильму клиентами и создание папок с избранными фильмами", python)
+            ContainerDb(catalog_db, Catalog DB, "PostgreSQL", "", postgresql)
+        }
+
+
+
+
+
+        Container_Boundary(views_tracking_service_boundary, Views Tracking Service, $tags=views_tracking_boundary_tag) {
+            Container(views_tracking_service, Сервис отслеживания просмотров, "FastAPI", "", python)
+            ContainerDb(views_track_redis, In-Memory DB для хранения последнего тайминга просмотра фильма, "Redis", "", redis)
+            ContainerDb(views_tracking_db, Movies Views DB, "PostgreSQL", "", postgresql)
+            ContainerDb(views_tracking_click, Movies Views Analytics DB, "Clickhouse", "Тепловая карта фильма, аналитика пользовательских просмотров")
+        }
+
+
+        Container_Boundary(payments_service_boundary, Payments Service, $tags=payments_service_boundary_tag) {
+            Container(payments_service, Сервис биллинг и платежей, "FastAPI", "Создание платежа, логика по коллбекам от интеграционных банков партнеров", python)
+            ContainerDb(payments_db, Payments DB, "PostgreSQL", "", postgresql)
+        }
+
+
+       Container_Boundary(subscriptions_service_boundary, Subscriptions Service, $tags=subscriptions_service_boundary_tag) {
+            Container(subscriptions_service, Сервис подписок и тарифных планов, "FastAPI", "Выбор типа подписки, настройка параметров подписки", python)
+            ContainerDb(subscriptions_db, Subscriptions DB, "PostgreSQL", "", postgresql)
+            ContainerDb(subscriptions_redis, Временное хранение доступных акций для пользователей, "Redis", "", redis)
+       }
+
+
+       Container_Boundary(promotions_service_boundary, Promotions Service, $tags=promotions_service_boundary_tag) {
+            Container(promotions_service, Сервис cистемы лояльности и промокодов, "FastAPI", "Создание администраторами промокодов, составление выборки подходящих клиентов под получений скидки исходя из правил лояльности", python)
+            ContainerDb(promotions_db, Promotions DB, "PostgreSQL", "", postgresql)
+       }
+
+
+       Container_Boundary(profiles_service_boundary, Profiles Service, $tags=profiles_service_boundary_tag) {
+            Container(profiles_service, Сервис учетных записей и их настроек, "FastAPI", "Привязка платежных токенов полученных от платежной системы с выбором карты по умолчанию, выставление возрастного ограничения, языковые предпочтения", python)
+            ContainerDb(profiles_db, Profiles DB, "PostgreSQL", "", postgresql)
+       }
+
+       Container_Boundary(recommendations_service_boundary, Recommendations Service, $tags=recommendations_service_boundary_tag) {
+            Container(recommendations_service, Сервис для взаимодействия со сторонней рекомендательной системой, "FastAPI", "", python)
+            ContainerDb(recommendations_redis, In-Memory DB для получения последних рекомендаций фильмов, "Redis", "", redis)
+            ContainerDb(recommendations_click, Recommendations Analytics DB, "Clickhouse", "Аналитика предложенных рекомендаций сторонней системой")
+       }
+
+       ContainerQueue(recommendations_rabbitmq, Message Queue, RabbitMQ, "", rabbitmq)
+       ContainerQueue(kafka, Message Queue, Kafka, "", kafka)
+    }
+}
+
+
+
+Rel(user, web_server, "Interact", "HTTPS")
+Rel(administrator, web_server, "Interact", "HTTPS")
+
+Rel(web_server, web_front, "Fetch static assets", "HTTPS")
+Rel(web_server, mobile_front, "Fetch static assets", "HTTPS")
+Rel(web_server, tv_front, "Fetch static assets", "HTTPS")
+Rel(web_server, web_crm, "Fetch static assets", "HTTPS")
+Rel(web_server, mobile_crm, "Fetch static assets", "HTTPS")
+
+Rel(web_front, api_gateway, "Execute client API calls", "HTTPS/REST")
+Rel(mobile_front, api_gateway, "Execute client API calls", "HTTPS/REST")
+Rel(tv_front, api_gateway, "Execute client API calls", "HTTPS/REST")
+Rel(web_crm, api_gateway, "Execute admin API calls", "HTTPS/REST")
+Rel(mobile_crm, api_gateway, "Execute admin API calls", "HTTPS/REST")
+Rel(payment_system, api_gateway, "Receive payment callbacks", "HTTPS/REST")
+
+BiRel_L(api_gateway, auth_service, Get/Validate JWT token)
+Rel(api_gateway, web_bff, "Route Web traffic", "HTTP")
+Rel(api_gateway, mobile_bff, "Route Mobile traffic", "HTTP")
+Rel(api_gateway, tv_bff, "Route TV traffic", "HTTP")
+
+Rel(bff_layer, backend_microservices, Requests, $tags=test)
+
+
+Rel_L(video_streaming_service, online_cinemas, "Fetch partner video metadata/streams", "HTTPS/REST", $tags=video_streaming_rel)
+Rel(video_streaming_service, s3, Stream video chunks, $tags=video_streaming_rel)
+
+Rel(catalog_service, catalog_db, "CRUD movies, genres, actors & reviews", $tags=catalog_rel)
+
+Rel(views_tracking_service, views_track_redis, Debounce / Buffer current watch position, $tags=views_tracking_rel)
+Rel(views_tracking_service, views_tracking_db, Flush positions periodically & Fetch history of all views, $tags=views_tracking_rel)
+Rel_D(views_tracking_service, kafka, Publish raw viewing heartbeats, $tags=views_tracking_rel)
+Rel_U(kafka, views_tracking_click, Consume raw heartbeats via Kafka Engine, $tags=views_tracking_rel)
+
+Rel(payments_service, payments_db, Write payment transactions, $tags=payments_service_rel)
+Rel_D(payments_service, kafka, After successful/failed payment publish event about this, $tags=payments_service_rel)
+
+Rel_U(kafka, subscriptions_service, "Consume payment events", $tags=subscriptions_service_rel)
+Rel_U(kafka, subscriptions_service, "Consume promotions events", $tags=subscriptions_service_rel)
+Rel(subscriptions_service, subscriptions_db, CRUD subscriptions, $tags=subscriptions_service_rel)
+Rel(subscriptions_service, auth_service, Add/Update custom attribute about current user subscription with end time, $tags=subscriptions_service_rel)
+Rel(subscriptions_service, subscriptions_redis, Cache & validate available sales, $tags=subscriptions_service_rel)
+
+Rel(promotions_service, promotions_db, "CRUD promo & Save local users projection", $tags=promotions_service_rel)
+BiRel_U(kafka, promotions_service, Consume info about new clients & Push info about clients available sales, $tags=promotions_service_rel)
+
+Rel(profiles_service, profiles_db, CRUD profiles, $tags=profiles_service_rel)
+Rel_D(profiles_service, recommendations_rabbitmq, Push info about the client and his preferences, $tags=profiles_service_rel)
+BiRel_D(profiles_service, kafka, Push event about new client & Consume payment events, $tags=profiles_service_rel)
+
+BiRel_U(recommendation_system, recommendations_rabbitmq, Push profile preferences & Consume generated ML recommendations, $tags=recommendations_service_rel)
+BiRel_U(recommendations_rabbitmq, recommendations_service, Force refresh of recommendations & Consume pre-calculated recommendations, $tags=recommendations_service_rel)
+Rel(recommendations_service, recommendations_redis, Cache user recommendations for fast lookup, $tags=recommendations_service_rel)
+Rel(recommendations_service, recommendations_click, Write external system recommendations, $tags=recommendations_service_rel)
+
+
+
+footer PlantUML v.%version(), C4-PlantUML v.C4Version()
+@enduml
