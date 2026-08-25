@@ -34,6 +34,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cinemaabyss-network
 
   kafka:
     image: apache/kafka:4.3.1
@@ -49,6 +51,8 @@ services:
       - kafka-data:/var/lib/kafka/data
       - kafka-secrets:/etc/kafka/secrets
       - kafka-config:/mnt/shared/config
+    networks:
+      - cinemaabyss-network
 
   kafbat-ui:
     container_name: kafbat-ui
@@ -62,6 +66,8 @@ services:
       - ${KAFKA_UI_PORT}:8080
     volumes:
       - ./kafka/ui_config.yaml:/etc/kafkaui/dynamic_config.yaml
+    networks:
+      - cinemaabyss-network
 
   kafka-init:
     image: apache/kafka:4.3.1
@@ -72,6 +78,8 @@ services:
     entrypoint: /bin/sh /kafka/entrypoint.sh
     volumes:
       - ./kafka/entrypoint.sh:/kafka/entrypoint.sh
+    networks:
+      - cinemaabyss-network
 
 
 
@@ -88,6 +96,8 @@ services:
     environment:
       PORT: ${MONOLITH_PORT}
       DB_CONNECTION_STRING: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/cinemaabyss?sslmode=disable
+    networks:
+      - cinemaabyss-network
 
   movies-service:
     build: ./src/microservices/movies
@@ -100,6 +110,8 @@ services:
     environment:
       PORT: ${MOVIES_PORT}
       DB_CONNECTION_STRING: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/cinemaabyss?sslmode=disable
+    networks:
+      - cinemaabyss-network
 
   events-service:
     build: ./src/microservices/events
@@ -114,6 +126,8 @@ services:
       - ${EVENTS_PORT}:${EVENTS_PORT}
     volumes:
       - ./src/microservices/events/src/:/app/
+    networks:
+      - cinemaabyss-network
 
   proxy-service:
     build: ./src/microservices/proxy
@@ -133,9 +147,16 @@ services:
       MOVIES_MIGRATION_PERCENT: "50"
     volumes:
       - ./src/microservices/proxy/src/:/app/
+    networks:
+      - cinemaabyss-network
 
 volumes:
   postgres-data:
   kafka-data:
   kafka-secrets:
   kafka-config:
+
+networks:
+  cinemaabyss-network:
+    name: cinemaabyss-network
+    driver: bridge
