@@ -42,7 +42,7 @@ docker-compose.yml.
  - реализовать необходимые конфигурационные файлы для переключения трафика.
 
 ### CI/CD
-В папке .github/worflows доработайте деплой новых сервисов proxy и events в docker-build-push.yml,
+В папке .github/workflows доработайте деплой новых сервисов proxy и events в docker-build-push.yml,
 чтобы api-tests при сборке отрабатывали корректно при отправке коммита в вашу новую ветку.
 
 Нужно доработать 
