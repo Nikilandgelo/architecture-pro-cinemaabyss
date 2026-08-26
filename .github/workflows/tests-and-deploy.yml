@@ -27,6 +27,10 @@ env:
   EVENTS_PORT: "8082"
   PROXY_PORT: "8000"
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   run-api-tests:
     name: Run API Tests
