@@ -120,8 +120,10 @@ services:
       PORT: ${EVENTS_PORT}
       KAFKA_BROKERS: kafka:9092
     depends_on:
-      - postgres
-      - kafka
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     ports:
       - ${EVENTS_PORT}:${EVENTS_PORT}
     volumes:
