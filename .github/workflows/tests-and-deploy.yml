@@ -63,7 +63,7 @@ jobs:
   deploy-monolith:
     needs: run-api-tests
     if: ${{ success() }}
-    uses: ./.github/workflows/reusable/build-push-image.yml
+    uses: ./.github/workflows/build-push-image.yml
     with:
       image_name: ${{ github.repository }}/monolith
       image_context: ./src/monolith
@@ -71,7 +71,7 @@ jobs:
   deploy-movies-service:
     needs: run-api-tests
     if: ${{ success() }}
-    uses: ./.github/workflows/reusable/build-push-image.yml
+    uses: ./.github/workflows/build-push-image.yml
     with:
       image_name: ${{ github.repository }}/movies-service
       image_context: ./src/microservices/movies
@@ -79,7 +79,7 @@ jobs:
   deploy-proxy-service:
     needs: run-api-tests
     if: ${{ success() }}
-    uses: ./.github/workflows/reusable/build-push-image.yml
+    uses: ./.github/workflows/build-push-image.yml
     with:
       image_name: ${{ github.repository }}/proxy-service
       image_context: ./src/microservices/proxy
@@ -87,7 +87,7 @@ jobs:
   deploy-events-service:
     needs: run-api-tests
     if: ${{ success() }}
-    uses: ./.github/workflows/reusable/build-push-image.yml
+    uses: ./.github/workflows/build-push-image.yml
     with:
       image_name: ${{ github.repository }}/events-service
       image_context: ./src/microservices/events
