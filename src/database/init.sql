@@ -1,8 +1,5 @@
 -- Initialize CinemaAbyss Database Schema
 
--- Create database if it doesn't exist
--- Note: This is handled by Docker Compose and Kubernetes configs
-
 -- Connect to the database
 \c cinemaabyss;
 
