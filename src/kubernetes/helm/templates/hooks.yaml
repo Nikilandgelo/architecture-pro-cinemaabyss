@@ -1,0 +1,29 @@
+{{- if .Values.kafka.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "cinemaabyss.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: init-script
+          configMap:
+            name: kafka-init-scripts
+            defaultMode: 0755
+      containers:
+        - name: kafka-init
+          image: {{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}
+          command: ["/bin/sh", "/kafka/entrypoint.sh"]
+          volumeMounts:
+            - name: init-script
+              mountPath: /kafka
+
+{{- end }}
