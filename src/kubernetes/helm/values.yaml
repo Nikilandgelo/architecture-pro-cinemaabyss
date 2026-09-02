@@ -1,21 +1,23 @@
-# Global settings
 global:
-  namespace: cinemaabyss
+  namespace: cinemaabyss-helm
   domain: cinemaabyss.example.com
 
-# Image pull secrets
 imagePullSecrets:
-  dockerconfigjson: ewoJImF1dGhzIjogewoJCSJnaGNyLmlvIjogewoJCQkiYXV0aCI6
+  dockerconfigjson: CnsKCSJhdXRocyI6IHsKCQkiZ2hjci5pbyI6IHsKCQkJImF1dGgiOiAiVG1scmFXeGhibVJuWld4dk9tZG9jRjgyWW10dU1XRTJNazQzU1doeWJVb3liR1Z2YmpKRVJtZDZhRzAyWkVvd2NrOXViV2c9IgoJCX0KCX0KfQo=
+
+# Opaque secrets for overriding after from another values_file or via --set flag
+secrets:
+  POSTGRES_USER: ""
+  POSTGRES_PASSWORD: ""
+  POSTGRES_DB: ""
+
 # Database configuration
 database:
-  host: postgres
-  port: 5432
-  name: cinemaabyss
-  user: postgres
-  password: cG9zdGdyZXNfcGFzc3dvcmQ=
+  enabled: true
+  port: 6432
   image:
     repository: postgres
-    tag: 14
+    tag: 18-alpine
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -25,98 +27,17 @@ database:
       cpu: 500m
       memory: 512Mi
   persistence:
-    enabled: true
     size: 10Gi
     accessMode: ReadWriteOnce
-
-# Monolith configuration
-monolith:
-  enabled: true
-  image:
-    repository: ghcr.io/db-exp/cinemaabysstest/monolith
-    tag: latest
-    pullPolicy: Always
-  replicas: 1
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  service:
-    port: 8080
-    targetPort: 8080
-    type: ClusterIP
-
-# Proxy service configuration
-proxyService:
-  enabled: true
-  image:
-    repository: ghcr.io/db-exp/cinemaabysstest/proxy-service
-    tag: latest
-    pullPolicy: Always
-  replicas: 1
-  resources:
-    limits:
-      cpu: 300m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  service:
-    port: 80
-    targetPort: 8000
-    type: ClusterIP
-
-# Movies service configuration
-moviesService:
-  enabled: true
-  image:
-    repository: ghcr.io/db-exp/cinemaabysstest/movies-service
-    tag: latest
-    pullPolicy: Always
-  replicas: 1
-  resources:
-    limits:
-      cpu: 300m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  service:
-    port: 8081
-    targetPort: 8081
-    type: ClusterIP
-
-# Events service configuration
-eventsService:
-  enabled: true
-  image:
-    repository: ghcr.io/db-exp/cinemaabysstest/events-service
-    tag: latest
-    pullPolicy: Always
-  replicas: 1
-  resources:
-    limits:
-      cpu: 300m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  service:
-    port: 8082
-    targetPort: 8082
-    type: ClusterIP
 
 # Kafka configuration
 kafka:
   enabled: true
+  internalPort: 9092
+  externalPort: 9094
   image:
-    repository: wurstmeister/kafka
-    tag: 2.13-2.7.0
-    pullPolicy: IfNotPresent
-  replicas: 1
+    repository: apache/kafka
+    tag: 4.3.1
   resources:
     limits:
       cpu: 1000m
@@ -125,61 +46,225 @@ kafka:
       cpu: 200m
       memory: 512Mi
   persistence:
-    enabled: true
     size: 5Gi
     accessMode: ReadWriteOnce
-  topics:
-    - name: movie-events
-      partitions: 1
-      replicationFactor: 1
-    - name: user-events
-      partitions: 1
-      replicationFactor: 1
-    - name: payment-events
-      partitions: 1
-      replicationFactor: 1
 
-# Zookeeper configuration
-zookeeper:
-  enabled: true
-  image:
-    repository: wurstmeister/zookeeper
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicas: 1
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-  persistence:
+services:
+  # Monolith configuration
+  monolith:
     enabled: true
-    size: 1Gi
-    accessMode: ReadWriteOnce
+    labelsPods:
+      app: monolith-pod
+    env:
+      - name: PORT
+        value: "8080"
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_USER
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_PASSWORD
+      - name: POSTGRES_DB
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_DB
+      - name: DB_CONNECTION_STRING
+        value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:6432/$(POSTGRES_DB)?sslmode=disable"
+    replicas: 1
+    image:
+      repository: ghcr.io/nikilandgelo/architecture-pro-cinemaabyss/monolith
+      tag: latest
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    service:
+      port: 8080
+      targetPort: 8080
+      type: ClusterIP
+    readinessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/users
+        port: 8080
+    livenessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/users
+        port: 8080
+
+  # Movies service configuration
+  movies-service:
+    enabled: true
+    labelsPods:
+      app: movies-service-pod
+    env:
+      - name: PORT
+        value: "8081"
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_USER
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_PASSWORD
+      - name: POSTGRES_DB
+        valueFrom:
+          secretKeyRef:
+            name: cluster-secrets
+            key: POSTGRES_DB
+      - name: DB_CONNECTION_STRING
+        value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:6432/$(POSTGRES_DB)?sslmode=disable"
+    replicas: 1
+    image:
+      repository: ghcr.io/nikilandgelo/architecture-pro-cinemaabyss/movies-service
+      tag: latest
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    service:
+      port: 8081
+      targetPort: 8081
+      type: ClusterIP
+    readinessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/movies/health
+        port: 8081
+    livenessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/movies/health
+        port: 8081
+
+  # Events service configuration
+  events-service:
+    enabled: true
+    labelsPods:
+      app: events-service-pod
+    env:
+      - name: PORT
+        value: "8082"
+      - name: KAFKA_BROKERS
+        value: "kafka:9092"
+    replicas: 1
+    image:
+      repository: ghcr.io/nikilandgelo/architecture-pro-cinemaabyss/events-service
+      tag: latest
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    service:
+      port: 8082
+      targetPort: 8082
+      type: ClusterIP
+    readinessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/events/health
+        port: 8082
+    livenessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /api/events/health
+        port: 8082
+
+  # Proxy service configuration
+  proxy-service:
+    enabled: true
+    labelsPods:
+      app: proxy-service-pod
+    env:
+      - name: PORT
+        value: "8000"
+      - name: EVENTS_SERVICE_URL
+        value: "http://events-service:8082"
+    envFrom:
+      - configMapRef:
+          name: cinemaabyss-config
+    replicas: 1
+    image:
+      repository: ghcr.io/nikilandgelo/architecture-pro-cinemaabyss/proxy-service
+      tag: latest
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    service:
+      port: 8000
+      targetPort: 8000
+      type: ClusterIP
+    readinessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /health
+        port: 8000
+    livenessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+      httpGet:
+        path: /health
+        port: 8000
 
 # Ingress configuration
 ingress:
   enabled: true
-  className: nginx
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     - host: cinemaabyss.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-          service: proxy-service
-          port: 80
+      http:
+        paths:
         - path: /api/events
           pathType: Prefix
-          service: events-service
-          port: 8082
-
-# Application configuration
-config:
-  # Strangler Fig configuration
-  gradualMigration: "true"
-  moviesMigrationPercent: "100"
+          backend:
+            service:
+              name: events-service
+              port:
+                number: 8082
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: proxy-service
+              port:
+                number: 8000

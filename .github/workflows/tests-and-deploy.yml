@@ -1,0 +1,97 @@
+name: Run Tests & Deploy Services
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+      - 'cinema'
+    paths:
+      - 'src/**'
+      - '.github/workflows/**'
+  release:
+    types: [ published ]
+
+env:
+  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+
+  KAFKA_PORT: "9093"
+  KAFKA_LISTENER_NAME: ${{ secrets.KAFKA_LISTENER_NAME }}
+  KAFKA_NODE_ID: ${{ secrets.KAFKA_NODE_ID }}
+  KAFKA_UI_PORT: "11080"
+
+  MONOLITH_PORT: "8080"
+  MOVIES_PORT: "8081"
+  EVENTS_PORT: "8082"
+  PROXY_PORT: "8000"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  run-api-tests:
+    name: Run API Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Start services with Docker Compose
+        run: docker compose up -d
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: tests/postman/package-lock.json
+
+      - name: Install Newman and dependencies
+        working-directory: tests/postman
+        run: npm install
+
+      - name: Run API tests
+        working-directory: tests/postman
+        run: |
+          docker build -t cinemaabyss-api-tests .
+          docker run --network=cinemaabyss-network -v "$(pwd)/reports:/app/reports" cinemaabyss-api-tests
+
+      - name: Stop services
+        if: ${{ always() }}
+        run: docker compose down
+
+  deploy-monolith:
+    needs: run-api-tests
+    if: ${{ success() }}
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      image_name: ${{ github.repository }}/monolith
+      image_context: ./src/monolith
+
+  deploy-movies-service:
+    needs: run-api-tests
+    if: ${{ success() }}
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      image_name: ${{ github.repository }}/movies-service
+      image_context: ./src/microservices/movies
+
+  deploy-proxy-service:
+    needs: run-api-tests
+    if: ${{ success() }}
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      image_name: ${{ github.repository }}/proxy-service
+      image_context: ./src/microservices/proxy
+
+  deploy-events-service:
+    needs: run-api-tests
+    if: ${{ success() }}
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      image_name: ${{ github.repository }}/events-service
+      image_context: ./src/microservices/events

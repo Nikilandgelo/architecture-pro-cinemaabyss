@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  namespace: cinemaabyss
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: init-script
+          configMap:
+            name: kafka-init-scripts
+            defaultMode: 0755
+      containers:
+        - name: kafka-init
+          image: apache/kafka:4.3.1
+          command: ["/bin/sh", "/kafka/entrypoint.sh"]
+          volumeMounts:
+            - name: init-script
+              mountPath: /kafka

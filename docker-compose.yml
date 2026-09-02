@@ -1,143 +1,164 @@
-version: '3.8'
+x-kafka-envs: &kafka-envs
+  KAFKA_NODE_ID: ${KAFKA_NODE_ID}
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  KAFKA_PROCESS_ROLES: broker,controller
+
+  KAFKA_CONTROLLER_LISTENER_NAMES: KRAFT
+  KAFKA_CONTROLLER_QUORUM_BOOTSTRAP_SERVERS: localhost:10092
+  KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:${KAFKA_PORT},KRAFT://0.0.0.0:10092
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,KRAFT:PLAINTEXT
+  KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT}
+  KAFKA_CONTROLLER_QUORUM_VOTERS: ${KAFKA_NODE_ID}@localhost:10092
+
+x-healthcheck-params: &healthcheck-params
+  interval: 5s
+  timeout: 3s
+  retries: 3
+
 
 services:
-  # PostgreSQL Database
   postgres:
-    image: postgres:14
+    image: postgres:18-alpine
     container_name: cinemaabyss-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: cinemaabyss
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - cinemaabyss-network
-
-  # ZooKeeper for Kafka
-  zookeeper:
-    image: wurstmeister/zookeeper:latest
-    container_name: cinemaabyss-zookeeper
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d cinemaabyss" ]
+      <<: *healthcheck-params
     ports:
-      - "2181:2181"
-    networks:
-      - cinemaabyss-network
-
-  # Kafka
-  kafka:
-    image: wurstmeister/kafka:2.13-2.7.0
-    container_name: cinemaabyss-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CREATE_TOPICS: "movie-events:1:1,user-events:1:1,payment-events:1:1"
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      - ${DB_PORT}:5432
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - postgres-data:/var/lib/postgresql
+      - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - cinemaabyss-network
 
-  # Monolith Service
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: cinemaabyss-kafka
+    environment:
+      <<: *kafka-envs
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1" ]
+      <<: *healthcheck-params
+    ports:
+      - ${KAFKA_PORT}:${KAFKA_PORT}
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - kafka-secrets:/etc/kafka/secrets
+      - kafka-config:/mnt/shared/config
+    networks:
+      - cinemaabyss-network
+
+  kafbat-ui:
+    container_name: kafbat-ui
+    image: ghcr.io/kafbat/kafka-ui
+    environment:
+      DYNAMIC_CONFIG_ENABLED: true
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - ${KAFKA_UI_PORT}:8080
+    volumes:
+      - ./kafka/ui_config.yaml:/etc/kafkaui/dynamic_config.yaml
+    networks:
+      - cinemaabyss-network
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    container_name: cinemaabyss-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: /bin/sh /kafka/entrypoint.sh
+    volumes:
+      - ./kafka/entrypoint.sh:/kafka/entrypoint.sh
+    networks:
+      - cinemaabyss-network
+
+
+
+
+
   monolith:
-    build:
-      context: ./src/monolith
-      dockerfile: Dockerfile
+    build: ./src/monolith
     container_name: cinemaabyss-monolith
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
-      - "8080:8080"
+      - ${MONOLITH_PORT}:${MONOLITH_PORT}
     environment:
-      PORT: 8080
-      DB_CONNECTION_STRING: postgres://postgres:postgres_password@postgres:5432/cinemaabyss?sslmode=disable
+      PORT: ${MONOLITH_PORT}
+      DB_CONNECTION_STRING: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/cinemaabyss?sslmode=disable
     networks:
       - cinemaabyss-network
 
-  # Movies Microservice
   movies-service:
-    build:
-      context: ./src/microservices/movies
-      dockerfile: Dockerfile
+    build: ./src/microservices/movies
     container_name: cinemaabyss-movies-service
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
-      - "8081:8081"
+      - ${MOVIES_PORT}:${MOVIES_PORT}
     environment:
-      PORT: 8081
-      DB_CONNECTION_STRING: postgres://postgres:postgres_password@postgres:5432/cinemaabyss?sslmode=disable
+      PORT: ${MOVIES_PORT}
+      DB_CONNECTION_STRING: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/cinemaabyss?sslmode=disable
     networks:
       - cinemaabyss-network
 
-  # Events Microservice
   events-service:
-    build:
-      context: ./src/microservices/events
-      dockerfile: Dockerfile
+    build: ./src/microservices/events
     container_name: cinemaabyss-events-service
-    depends_on:
-      - postgres
-      - kafka
-    ports:
-      - "8082:8082"
     environment:
-      PORT: 8082
+      PORT: ${EVENTS_PORT}
       KAFKA_BROKERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - ${EVENTS_PORT}:${EVENTS_PORT}
+    volumes:
+      - ./src/microservices/events/src/:/app/
     networks:
       - cinemaabyss-network
 
-  # Proxy Service (API Gateway)
   proxy-service:
-    build:
-      context: ./src/microservices/proxy
-      dockerfile: Dockerfile
+    build: ./src/microservices/proxy
     container_name: cinemaabyss-proxy-service
     depends_on:
       - monolith
       - movies-service
       - events-service
     ports:
-      - "8000:8000"
+      - ${PROXY_PORT}:${PROXY_PORT}
     environment:
-      PORT: 8000
-      MONOLITH_URL: http://monolith:8080
-      MOVIES_SERVICE_URL: http://movies-service:8081
+      PORT: ${PROXY_PORT}
+      MONOLITH_URL: http://monolith:${MONOLITH_PORT}
+      MOVIES_SERVICE_URL: http://movies-service:${MOVIES_PORT}
       EVENTS_SERVICE_URL: http://events-service:8082
       GRADUAL_MIGRATION: "true"
       MOVIES_MIGRATION_PERCENT: "50"
-    networks:
-      - cinemaabyss-network
-
-  # Kafka UI for monitoring Kafka
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: cinemaabyss-kafka-ui
-    depends_on:
-      - kafka
-    ports:
-      - "8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: cinemaabyss
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    volumes:
+      - ./src/microservices/proxy/src/:/app/
     networks:
       - cinemaabyss-network
 
 volumes:
   postgres-data:
+  kafka-data:
+  kafka-secrets:
+  kafka-config:
 
 networks:
   cinemaabyss-network:
