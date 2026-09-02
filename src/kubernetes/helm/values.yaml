@@ -3,8 +3,7 @@ global:
   domain: cinemaabyss.example.com
 
 imagePullSecrets:
-  # REPLACE BEFORE PUSHING
-  dockerconfigjson: <placeholder_after_completion_because_i_dont_want_leaked_token>
+  dockerconfigjson: CnsKCSJhdXRocyI6IHsKCQkiZ2hjci5pbyI6IHsKCQkJImF1dGgiOiAiVG1scmFXeGhibVJuWld4dk9tZG9jRjgyWW10dU1XRTJNazQzU1doeWJVb3liR1Z2YmpKRVJtZDZhRzAyWkVvd2NrOXViV2c9IgoJCX0KCX0KfQo=
 
 # Opaque secrets for overriding after from another values_file or via --set flag
 secrets:
