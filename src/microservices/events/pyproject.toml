@@ -1,0 +1,20 @@
+[project]
+name = "events"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Nikita Selivanov",email = "flgjkdoged228@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[all] (>=0.141.1,<0.142.0)",
+    "faststream[cli,kafka] (>=0.7.4,<0.8.0)",
+]
+
+[tool.poetry]
+packages = [{include = "events", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

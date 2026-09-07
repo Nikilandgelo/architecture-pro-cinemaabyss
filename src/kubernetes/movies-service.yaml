@@ -1,15 +1,29 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Service
 metadata:
   name: movies-service
   namespace: cinemaabyss
+spec:
+  type: ClusterIP
+  selector:
+    app: movies-service-pod
+  ports:
+    - port: 8081
+      targetPort: 8081
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movies-service-deployment
+  namespace: cinemaabyss
   labels:
-    app: movies-service
+    app: movies-service-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: movies-service
+      app: movies-service-pod
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,11 +32,14 @@ spec:
   template:
     metadata:
       labels:
-        app: movies-service
+        app: movies-service-pod
     spec:
+      imagePullSecrets:
+        - name: dockerconfigjson
+      restartPolicy: Always
       containers:
-      - name: movies-service
-        image: ghcr.io/db-exp/cinemaabysstest/movies-service:latest
+      - name: cinemaabyss-movies-service
+        image: ghcr.io/nikilandgelo/architecture-pro-cinemaabyss/movies-service:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8081
@@ -30,12 +47,10 @@ spec:
         - name: PORT
           value: "8081"
         - name: DB_CONNECTION_STRING
-          value: "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+          value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable"
         envFrom:
-        - configMapRef:
-            name: cinemaabyss-config
         - secretRef:
-            name: cinemaabyss-secrets
+            name: postgres-secrets
         resources:
           limits:
             cpu: "300m"
@@ -55,19 +70,3 @@ spec:
             port: 8081
           initialDelaySeconds: 15
           periodSeconds: 20
-      restartPolicy: Always
-      imagePullSecrets:
-        - name: dockerconfigjson
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: movies-service
-  namespace: cinemaabyss
-spec:
-  selector:
-    app: movies-service
-  ports:
-  - port: 8081
-    targetPort: 8081
-  type: ClusterIP

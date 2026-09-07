@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-init-scripts
+  namespace: cinemaabyss
+data:
+  entrypoint.sh: |
+    /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic payment-events --bootstrap-server kafka:9092 \
+    --replication-factor 1 --partitions 2
+    /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic user-events --bootstrap-server kafka:9092 \
+    --replication-factor 1 --partitions 2
+    /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic movie-events --bootstrap-server kafka:9092 \
+    --replication-factor 1 --partitions 2
+    
+    echo 'Topics created'

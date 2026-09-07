@@ -1,0 +1,82 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: cinemaabyss
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-pod
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-stateful-set
+  namespace: cinemaabyss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-pod
+  serviceName: postgres
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+  template:
+    metadata:
+      labels:
+        app: postgres-pod
+    spec:
+      volumes:
+        - name: postgres-init-scripts
+          configMap:
+            name: postgres-init-scripts
+      containers:
+      - name: cinemaabyss-postgres
+        image: postgres:18-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: POSTGRES_DB
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql
+        - name: postgres-init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+        readinessProbe:
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          exec:
+            command: ["pg_isready", "-U", "postgres"]

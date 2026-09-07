@@ -1,0 +1,139 @@
+{{- if .Values.kafka.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "cinemaabyss.labels" . | nindent 4 }}
+spec:
+  type: LoadBalancer
+  ports:
+    - name: internal
+      port: {{ .Values.kafka.internalPort }}
+      targetPort: {{ .Values.kafka.internalPort }}
+    - name: external
+      port: {{ .Values.kafka.externalPort }}
+      targetPort: {{ .Values.kafka.externalPort }}
+  selector:
+    app: kafka-pod
+
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-stateful-set
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "cinemaabyss.labels" . | nindent 4 }}
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-pod
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes:
+          - {{ .Values.kafka.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.kafka.persistence.size }}
+    - metadata:
+        name: kafka-config-data
+      spec:
+        accessModes:
+          - {{ .Values.kafka.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.kafka.persistence.size }}
+    - metadata:
+        name: kafka-secrets-data
+      spec:
+        accessModes:
+          - {{ .Values.kafka.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.kafka.persistence.size }}
+  template:
+    metadata:
+      labels:
+        app: kafka-pod
+    spec:
+      containers:
+        - name: cinemaabyss-kafka
+          image: {{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}
+          ports:
+            - containerPort: {{ .Values.kafka.internalPort }}
+            - containerPort: {{ .Values.kafka.externalPort }}
+          resources:
+            {{- toYaml .Values.kafka.resources | nindent 12 }}
+          env:
+            - name: KAFKA_NODE_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_NODE_ID
+            - name: KAFKA_LOG_DIRS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_LOG_DIRS
+            - name: KAFKA_PROCESS_ROLES
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_PROCESS_ROLES
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_CONTROLLER_LISTENER_NAMES
+            - name: KAFKA_CONTROLLER_QUORUM_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_CONTROLLER_QUORUM_BOOTSTRAP_SERVERS
+            - name: KAFKA_LISTENERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_LISTENERS
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_INTER_BROKER_LISTENER_NAME
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+            - name: KAFKA_ADVERTISED_LISTENERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_ADVERTISED_LISTENERS
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_CONTROLLER_QUORUM_VOTERS
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+            - name: kafka-config-data
+              mountPath: /mnt/shared/config
+            - name: kafka-secrets-data
+              mountPath: /etc/kafka/secrets
+          readinessProbe:
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            exec:
+              command: ["sh", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+
+{{- end }}

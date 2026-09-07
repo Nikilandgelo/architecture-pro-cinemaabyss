@@ -1,138 +1,69 @@
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: zookeeper
-  namespace: cinemaabyss
-  labels:
-    app: zookeeper
-spec:
-  ports:
-  - port: 2181
-    name: client
-  - port: 2888
-    name: server
-  - port: 3888
-    name: leader-election
-  selector:
-    app: zookeeper
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: zookeeper-data
-  namespace: cinemaabyss
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: zookeeper
-  namespace: cinemaabyss
-spec:
-  serviceName: zookeeper
-  replicas: 1
-  selector:
-    matchLabels:
-      app: zookeeper
-  template:
-    metadata:
-      labels:
-        app: zookeeper
-    spec:
-      containers:
-      - name: zookeeper
-        image: wurstmeister/zookeeper
-        ports:
-        - containerPort: 2181
-          name: client
-        - containerPort: 2888
-          name: server
-        - containerPort: 3888
-          name: leader-election
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        env:
-        - name: ZOOKEEPER_CLIENT_PORT
-          value: "2181"
-        - name: ZOOKEEPER_TICK_TIME
-          value: "2000"
-        volumeMounts:
-        - name: zookeeper-data
-          mountPath: /var/lib/zookeeper/data
-        readinessProbe:
-          tcpSocket:
-            port: 2181
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        livenessProbe:
-          tcpSocket:
-            port: 2181
-          initialDelaySeconds: 30
-          periodSeconds: 15
-      volumes:
-      - name: zookeeper-data
-        persistentVolumeClaim:
-          claimName: zookeeper-data
----
 apiVersion: v1
 kind: Service
 metadata:
   name: kafka
   namespace: cinemaabyss
-  labels:
-    app: kafka
 spec:
+  type: LoadBalancer
   ports:
-  - port: 9092
-    name: kafka
+    - name: internal
+      port: 9092
+      targetPort: 9092
+    - name: external
+      port: 9093
+      targetPort: 9093
   selector:
-    app: kafka
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: kafka-data
-  namespace: cinemaabyss
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
+    app: kafka-pod
+
+
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: kafka
+  name: kafka-stateful-set
   namespace: cinemaabyss
 spec:
   serviceName: kafka
   replicas: 1
   selector:
     matchLabels:
-      app: kafka
+      app: kafka-pod
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+    - metadata:
+        name: kafka-config-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+    - metadata:
+        name: kafka-secrets-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
   template:
     metadata:
       labels:
-        app: kafka
+        app: kafka-pod
     spec:
       containers:
-      - name: kafka
-        image: wurstmeister/kafka:2.13-2.7.0
+      - name: cinemaabyss-kafka
+        image: apache/kafka:4.3.1
         ports:
         - containerPort: 9092
-          name: kafka
+        - containerPort: 9093
         resources:
           requests:
             memory: "512Mi"
@@ -141,36 +72,66 @@ spec:
             memory: "1Gi"
             cpu: "1000m"
         env:
-        - name: KAFKA_ADVERTISED_LISTENERS
-          value: PLAINTEXT://kafka:9092
-        - name: KAFKA_LISTENERS
-          value: PLAINTEXT://0.0.0.0:9092
-        - name: KAFKA_PORT
-          value: "9092"
-        - name: KAFKA_ZOOKEEPER_CONNECT
-          value: zookeeper:2181
-        - name: KAFKA_CREATE_TOPICS
-          value: "movie-events:1:1,user-events:1:1,payment-events:1:1"
-        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
-          value: "true"
-        - name: KAFKA_BROKER_ID
-          value: "1"
+        - name: KAFKA_NODE_ID
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_NODE_ID
         - name: KAFKA_LOG_DIRS
-          value: "/kafka/kafka-logs"
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_LOG_DIRS
+        - name: KAFKA_PROCESS_ROLES
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_PROCESS_ROLES
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_CONTROLLER_LISTENER_NAMES
+        - name: KAFKA_CONTROLLER_QUORUM_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_CONTROLLER_QUORUM_BOOTSTRAP_SERVERS
+        - name: KAFKA_LISTENERS
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_LISTENERS
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_INTER_BROKER_LISTENER_NAME
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+        - name: KAFKA_ADVERTISED_LISTENERS
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_ADVERTISED_LISTENERS
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-config
+              key: KAFKA_CONTROLLER_QUORUM_VOTERS
         volumeMounts:
         - name: kafka-data
-          mountPath: /kafka
+          mountPath: /var/lib/kafka/data
+        - name: kafka-config-data
+          mountPath: /mnt/shared/config
+        - name: kafka-secrets-data
+          mountPath: /etc/kafka/secrets
         readinessProbe:
-          tcpSocket:
-            port: 9092
-          initialDelaySeconds: 15
-          periodSeconds: 10
-        livenessProbe:
-          tcpSocket:
-            port: 9092
-          initialDelaySeconds: 60
-          periodSeconds: 20
-      volumes:
-      - name: kafka-data
-        persistentVolumeClaim:
-          claimName: kafka-data
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          exec:
+            command: ["sh", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]

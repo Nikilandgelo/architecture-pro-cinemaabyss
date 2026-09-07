@@ -1,0 +1,86 @@
+{{- if .Values.database.enabled -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "cinemaabyss.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-pod
+  ports:
+    - port: {{ .Values.database.port }}
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-stateful-set
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "cinemaabyss.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-pod
+  serviceName: postgres
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - {{ .Values.database.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.database.persistence.size }}
+  template:
+    metadata:
+      labels:
+        app: postgres-pod
+    spec:
+      volumes:
+        - name: postgres-init-scripts
+          configMap:
+            name: postgres-init-scripts
+      containers:
+        - name: cinemaabyss-postgres
+          image: {{ .Values.database.image.repository }}:{{ .Values.database.image.tag }}
+          imagePullPolicy: {{ .Values.database.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-secrets
+                  key: POSTGRES_DB
+          resources:
+            {{- toYaml .Values.database.resources | nindent 12 }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql
+            - name: postgres-init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+
+{{- end }}
