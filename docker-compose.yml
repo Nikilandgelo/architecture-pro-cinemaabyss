@@ -54,21 +54,6 @@ services:
     networks:
       - cinemaabyss-network
 
-  kafbat-ui:
-    container_name: kafbat-ui
-    image: ghcr.io/kafbat/kafka-ui
-    environment:
-      DYNAMIC_CONFIG_ENABLED: true
-    depends_on:
-      kafka:
-        condition: service_healthy
-    ports:
-      - ${KAFKA_UI_PORT}:8080
-    volumes:
-      - ./kafka/ui_config.yaml:/etc/kafkaui/dynamic_config.yaml
-    networks:
-      - cinemaabyss-network
-
   kafka-init:
     image: apache/kafka:4.3.1
     container_name: cinemaabyss-kafka-init
